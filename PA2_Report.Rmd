@@ -1,0 +1,11 @@
+---
+title: "Project 2"
+author: "Nick Rose"
+date: "September 17, 2015"
+output: html_document: keep_md: true
+
+---
+
+This is a box plot showing the harm (fatalities and Injuries) storm based on event type (EVTYPE)
+
+This is a box plot showing the cost (prop and crop damage note: corpdmgexp k = thousands. m = millions, and will get ride of anything other than K, k, M, B, or 0) and of each storm by event type
