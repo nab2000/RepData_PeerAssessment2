@@ -5,7 +5,59 @@ date: "September 17, 2015"
 output: html_document: keep_md: true
 
 ---
+## Synopsis
 
-This is a box plot showing the harm (fatalities and Injuries) storm based on event type (EVTYPE)
 
-This is a box plot showing the cost (prop and crop damage note: corpdmgexp k = thousands. m = millions, and will get ride of anything other than K, k, M, B, or 0) and of each storm by event type
+## Data Processing
+The first step in our data analysis process was to set our libraries and read in the data and remove summary, none, and ? envtypes 
+```{r, echo = TRUE}
+library(knitr)
+library(ggplot2)
+library(lattice)
+opts_chunk$set(echo= TRUE)
+options(scipen = 2)
+```
+```{r, cache = T}
+df <- read.csv("repdata_data_StormData.csv.bz2")
+df <- df[!grepl("summary", df$EVTYP, ignore.case = TRUE),]
+df <- df[!df_EVTYP == "?",]
+df <- df[!grepl("none", df$EVTYPE, ignore.case = T),]
+```
+We will make two different subset data frames. One for our Human Health Impact and One for Cost. 
+
+Because the damage data has different multipliers we will actually use those multipliers to generate comparable numbers. The mutipliers in our data are k or K (thousand), M (million), B (billion), or 0 (none). There are a few rows where the multiplier is not any of these 5 possiblities and these observations will be removed. 
+```{r, cache = T}
+multiplier <- function(data){
+        if (data == "k"){data <- 10^3}
+        else if (data == "K"){data <- 10^3}
+        else if (data == "M"){data <- 10^6}
+        else if (data == "B"){10^9}
+        else if (data == 0){data <- 1}
+        else {data <- 0}
+}
+PROPDMGEXP <- sapply(df$PROPDMGEXP, multiplier)
+CROPDMGEXP <- sapply(df$CROPDMGEXP, multiplier)
+df_damage <- data.frame(EVTYPE = as.character(df$EVTYPE), 
+CROPDMG = df$CROPDMG*CROPDMGEXP,
+PROPDMG = df$PROPDMG*PROPDMGEXP)
+df_damage$TOTALDMG <- df_damage$PROPDMG + df_damage$CROPDMG
+df_damage <- df_damage[!df_damage$TOTALDMG ==0,]
+```
+Because the human health imapcts have both facility and injury data but there is no quantification of the seriousness of the injuries, we will make a single metric giving the injuries a quarter of weight of fatalities.
+```{r}
+df_health <- data.frame(EVTYP = as.character(df$EVTYPE), FATAL = df$FATALITIES, INJU = df$INJURIES, COMBINED = df$FATALITIES+0.25*df$INJURIES)
+sub_health <- df_health[!df_health$COMBINED == 0, ]
+tbl <- sapply(split(sub_health$FATAL, sub_health$EVTYP), mean)
+```
+
+
+## Results
+To visualize the cost of the storm types, a box plot was created to explore the data and visualize any significant differences by storm type
+```{r}
+
+
+           
+```
+
+
+
