@@ -17,10 +17,11 @@ library(lattice)
 opts_chunk$set(echo= TRUE)
 options(scipen = 2)
 ```
+
 ```{r, cache = T}
 df <- read.csv("repdata_data_StormData.csv.bz2")
 df <- df[!grepl("summary", df$EVTYP, ignore.case = TRUE),]
-df <- df[!df_EVTYP == "?",]
+df <- df[!df$EVTYP == "?",]
 df <- df[!grepl("none", df$EVTYPE, ignore.case = T),]
 ```
 We will make two different subset data frames. One for our Human Health Impact and One for Cost. 
@@ -37,11 +38,13 @@ multiplier <- function(data){
 }
 PROPDMGEXP <- sapply(df$PROPDMGEXP, multiplier)
 CROPDMGEXP <- sapply(df$CROPDMGEXP, multiplier)
-df_damage <- data.frame(EVTYPE = as.character(df$EVTYPE), 
+df_damage <- data.frame(EVTYPE = df$EVTYPE, 
 CROPDMG = df$CROPDMG*CROPDMGEXP,
 PROPDMG = df$PROPDMG*PROPDMGEXP)
 df_damage$TOTALDMG <- df_damage$PROPDMG + df_damage$CROPDMG
+df_damage$EVTYPE <- as.character(df_damage$EVTYPE)
 df_damage <- df_damage[!df_damage$TOTALDMG ==0,]
+df_damage <- df_damage[order(df_damage$TOTALDMG),]
 ```
 Because the human health imapcts have both facility and injury data but there is no quantification of the seriousness of the injuries, we will make a single metric giving the injuries a quarter of weight of fatalities.
 ```{r}
