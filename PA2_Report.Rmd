@@ -9,7 +9,7 @@ output: html_document: keep_md: true
 
 
 ## Data Processing
-The first step in our data analysis process was to set our libraries and read in the data and remove summary, none, and ? envtypes 
+The first step in our data analysis process was to set our libraries 
 ```{r, echo = TRUE}
 library(knitr)
 library(ggplot2)
@@ -17,50 +17,133 @@ library(lattice)
 opts_chunk$set(echo= TRUE)
 options(scipen = 2)
 ```
-
+Then we read in the data and removed summary, none, and ? envtypes as these appear to be data entry errors or, in the case of summary, consist of multiple envent types and will not be used in our analysis
 ```{r, cache = T}
 df <- read.csv("repdata_data_StormData.csv.bz2")
 df <- df[!grepl("summary", df$EVTYP, ignore.case = TRUE),]
 df <- df[!df$EVTYP == "?",]
 df <- df[!grepl("none", df$EVTYPE, ignore.case = T),]
 ```
-We will make two different subset data frames. One for our Human Health Impact and One for Cost. 
+After this, we made two different subset data frames. One for our Human Health Impact and One for Cost estimate. 
 
-Because the damage data has different multipliers we will actually use those multipliers to generate comparable numbers. The mutipliers in our data are k or K (thousand), M (million), B (billion), or 0 (none). There are a few rows where the multiplier is not any of these 5 possiblities and these observations will be removed. 
+### Cost Estimate
+Because the damage data has different multipliers we will actually use those multipliers to generate comparable numbers. The mutipliers in our data are h or H (hundreds), k or K (thousand), M (million), B (billion), or 0 (no multiplier). There are a few rows where the multiplier is not any of these 5 possiblities these observations were converted to NA. If both the Crop Damage and Property Damage values were NA, the observation was removed.
 ```{r, cache = T}
 multiplier <- function(data){
         if (data == "k"){data <- 10^3}
         else if (data == "K"){data <- 10^3}
+        else if (data == "h"){data <- 10^2}
+        else if (data == "H"){data <- 10^2}
         else if (data == "M"){data <- 10^6}
+        else if (data == "m"){data <- 10^6}
         else if (data == "B"){10^9}
         else if (data == 0){data <- 1}
-        else {data <- 0}
+        else {data <- NA}
 }
 PROPDMGEXP <- sapply(df$PROPDMGEXP, multiplier)
 CROPDMGEXP <- sapply(df$CROPDMGEXP, multiplier)
 df_damage <- data.frame(EVTYPE = df$EVTYPE, 
 CROPDMG = df$CROPDMG*CROPDMGEXP,
 PROPDMG = df$PROPDMG*PROPDMGEXP)
-df_damage$TOTALDMG <- df_damage$PROPDMG + df_damage$CROPDMG
-df_damage$EVTYPE <- as.character(df_damage$EVTYPE)
-df_damage <- df_damage[!df_damage$TOTALDMG ==0,]
-df_damage <- df_damage[order(df_damage$TOTALDMG),]
+for (i in 1:nrow(df_damage)){
+    if(is.na(df_damage$PROPDMG[i]) & is.na(df_damage$CROPDMG[i])){
+        df_damage$TOTALDMG[i] <- NA
+    }
+    else if (is.na(df_damage$PROPDMG[i])){
+        df_damage$TOTALDMG[i] <- df_damage$CROPDMG[i]
+    }
+    else if (is.na(df_damage$CROPDMG[i])){
+        df_damage$TOTALDMG[i] <- df_damage$PROPDMG[i]
+    }
+    else df_damage$TOTALDMG[i] <- df_damage$PROPDMG[i] + 
+            df_damage$CROPDMG[i]
+}
+df_damage <- df_damage[!is.na(df_damage$TOTALDMG), ]
+df_damage$EVTYPE <- factor(df_damage$EVTYPE)
 ```
-Because the human health imapcts have both facility and injury data but there is no quantification of the seriousness of the injuries, we will make a single metric giving the injuries a quarter of weight of fatalities.
+Then we generated a table too look at the mean, upper and lower 95% CI of the mean and the max cost for each event type
+```{r}
+tbl_exp_mean <- sapply(split(df_damage$TOTALDMG, df_damage$EVTYP), mean)
+tbl_exp_max <- sapply(split(df_damage$TOTALDMG, df_damage$EVTYP), max)
+tbl_exp_sd <- sapply(split(df_damage$TOTALDMG, df_damage$EVTYP), sd)
+tbl_exp_n <- sapply(split(df_damage$TOTALDMG, df_damage$EVTYP), length)
+tbl_exp <- data.frame(lower = tbl_exp_mean - qt(.975, df = tbl_exp_n -1)*tbl_exp_sd/sqrt(tbl_exp_n), mean = tbl_exp_mean, upper = tbl_exp_mean + qt(.975, df = tbl_exp_n -1)*tbl_exp_sd/sqrt(tbl_exp_n), max = tbl_exp_max, n = tbl_exp_n)
+```
+
+
+### Human Health Estimate
+Because the human health imapcts have both facility and injury data but there is no quantification of the seriousness of the injuries, we will make a single metric giving the injuries a quarter of weight of fatalities. Then similar to the cost estimate, we calcualted general statistics by event type
 ```{r}
 df_health <- data.frame(EVTYP = as.character(df$EVTYPE), FATAL = df$FATALITIES, INJU = df$INJURIES, COMBINED = df$FATALITIES+0.25*df$INJURIES)
-sub_health <- df_health[!df_health$COMBINED == 0, ]
-tbl <- sapply(split(sub_health$FATAL, sub_health$EVTYP), mean)
+tbl_health_mean <- sapply(split(df_health$COMBINED, df_health$EVTYP), mean)
+tbl_health_max <- sapply(split(df_health$COMBINED, df_health$EVTYP), max)
+tbl_health_sd <- sapply(split(df_health$COMBINED, df_health$EVTYP), sd)
+tbl_health_n <- sapply(split(df_health$COMBINED, df_health$EVTYP), length)
+tbl_health <- data.frame(lower = tbl_health_mean - qt(.975, df = tbl_health_n -1)*tbl_health_sd/sqrt(tbl_health_n), mean = tbl_health_mean, upper = tbl_health_mean + qt(.975, df = tbl_health_n -1)*tbl_health_sd/sqrt(tbl_health_n), max = tbl_health_max, n = tbl_health_n)
 ```
 
 
 ## Results
-To visualize the cost of the storm types, a box plot was created to explore the data and visualize any significant differences by storm type
+### Cost Esimate
+To visualize the cost of the storm types we looked at the storm events associated with the top 10 highest costs  based on mean, max, and upper 95% CI of the mean 
 ```{r}
+tbl_exp <- tbl_exp[order(tbl_exp$max), ]
+max_list <- tail(tbl_exp, n = 5)
+max_list
 
+tbl_exp <- tbl_exp[order(tbl_exp$mean), ]
+mean_list <- tail(tbl_exp, n = 5)
+mean_list
 
-           
+tbl_exp_sub <- tbl_exp[!is.na(tbl_exp$upper), ]
+tbl_exp_sub <- tbl_exp_sub[order(tbl_exp_sub$upper), ]
+upper_list <- tail(tbl_exp_sub, n = 5)           
+upper_list
+
 ```
+As we can see Hurricanes/Typhons cost the most on average (note: the top two means were single time events, thus their average is also their max and is evalauted there) with Sotrm Surge in the top 5. The top three most costly events ever were Hurricane/Typhoon, Storm Surge, and Floods. Looking at the upper 95% CI of the mean, we see that Hurricane/Typhon and Storm Surge are again in the top five. Thus  consistently the most epensive events are Hurricanes/Typhoons and Storm Surges.  
 
+The data for the top 5  storm events for each of the three measures (mean, max, and upper) can be visualed in a box and whiskers plot
+```{r}
+top_5_list <- unique(c(rownames(max_list), rownames(mean_list), rownames(upper_list)))
+sub<- df_damage[df_damage$EVTYPE == top_5_list[1], ]
+for (i in 1:length(top_5_list)){
+    sub <- rbind(sub, df_damage[df_damage$EVTYPE == top_5_list[i], ])
+}
+sub$EVTYPE <- factor(sub$EVTYPE)
+g <- ggplot(data = sub, aes (x = EVTYPE, y = log(TOTALDMG)))
+g <- g + geom_boxplot()
+g <- g + ylab("log Total Damage ($)") + xlab("Event Type") + ggtitle("Top 10 Weather Events by Damage")
+g
+```
+Consistent with our results this plot shows that Hurricane/Typhoons appear to cause the most damage. It also shows that Storm Surge damage appears to be similar with the other 8 stor types (note: Hurricane Opal is a specific Hurricane/Typhoon) 
 
+###Human Health Estimate
+Similar to what was done with the damage costs, we also looked at the top 5 events based on mean, max, and 95% upper CI for our combined human health statistic
+```{r}
+tbl_health <- tbl_health[order(tbl_health$max), ]
+max_list <- tail(tbl_health, n = 5)
+max_list
 
+tbl_health <- tbl_health[order(tbl_health$mean), ]
+mean_list <- tail(tbl_health, n = 5)
+mean_list
+
+tbl_health_sub <- tbl_health[!is.na(tbl_health$upper), ]
+tbl_health_sub <- tbl_health_sub[order(tbl_health_sub$upper), ]
+upper_list <- tail(tbl_health_sub, n = 5)           
+upper_list
+```
+The results are a little less consistant that for damage costs, but heat waves and wild fires show up in 2 of the 3 categories (mean and upper CI) and heat (likely similar to heat waves) is in the top 5 for max human health loss. We can again visualize this to see if it makes things cleaer.
+```{r}
+top_5_list <- unique(c(rownames(max_list), rownames(mean_list), rownames(upper_list)))
+sub<- df_health[df_health$EVTYP == top_5_list[1], ]
+for (i in 1:length(top_5_list)){
+    sub <- rbind(sub, df_health[df_health$EVTYP == top_5_list[i], ])
+}
+sub$EVTYP <- factor(sub$EVTYP)
+g <- ggplot(data = sub, aes (x = EVTYP, y = log(COMBINED)))
+g <- g + geom_boxplot()
+g <- g + ylab("log Total Damage ($)") + xlab("Event Type") + ggtitle("Top 10 Weather Events by Damage")
+g
+```
